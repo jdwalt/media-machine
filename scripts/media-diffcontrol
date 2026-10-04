@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+
+set -u
+
+SCRIPT_VERSION="2.1.0-2026-08-17"
+LOGROOT="/var/log/media-machine"
+LATEST="$LOGROOT/latest.txt"
+CONTROL="$LOGROOT/control.txt"
+CONTROL_INFO="$LOGROOT/control-info.txt"
+
+usage() {
+    echo "Usage:"
+    echo "  media-diffcontrol"
+    echo "  media-diffcontrol --important"
+    echo "  sudo media-diffcontrol --set"
+    echo "  media-diffcontrol --show"
+}
+
+extract_important() {
+    local file="$1"
+    awk '
+    function wanted(title) {
+        return title ~ /^ (DIAGNOSTIC SCRIPT INFO|CONTROLLED HARDWARE CHECK|HBA \/ CONTROLLER|HBA-ATTACHED DRIVE MAP|PHYSICAL NETWORK|NETWORK|USB TOPOLOGY \/ NEGOTIATED SPEEDS|FILESYSTEMS \/ MOUNTS|BLOCK DEVICES|SCSI \/ OPTICAL DEVICES|SMART HEALTH \/ INTEGRITY|SMART SUMMARY|DOCKER|CORE SERVICES|TEMPERATURES|DELL FAN \/ THERMAL TELEMETRY|CPU TEMPERATURES|HBA \/ SCSI BOOT EVENTS|OPTICAL MEDIA EVENTS|STORAGE ERROR CHECK|RECENT STORAGE \/ SATA \/ NVME ERRORS|REBOOT REQUIRED|FIRMWARE STATUS)$/
+    }
+    /^================================================================$/ {
+        if ((getline title) <= 0) exit
+        if ((getline border) <= 0) exit
+        keep=wanted(title)
+        if (keep) {
+            if (printed) print ""
+            print "================================================================"
+            print title
+            print "================================================================"
+            printed=1
+        }
+        next
+    }
+    keep { print }
+    ' "$file"
+}
+
+if [ ! -f "$LATEST" ]; then
+    echo "No current media-status snapshot exists."
+    echo "Run: sudo media-status"
+    exit 1
+fi
+
+case "${1:-}" in
+    --set)
+        if [ "$(id -u)" -ne 0 ]; then
+            echo "Setting the control requires sudo:"
+            echo "  sudo media-diffcontrol --set"
+            exit 1
+        fi
+        if grep -Fq 'Overall controlled hardware status: FAIL' "$LATEST"; then
+            echo "Refusing to set the control baseline because the controlled hardware check failed."
+            echo "Review: grep -A30 'CONTROLLED HARDWARE CHECK' $LATEST"
+            exit 1
+        fi
+        if grep -Fq 'Overall storage-error status: FAIL' "$LATEST"; then
+            echo "Refusing to set the control baseline because the current-boot storage error check failed."
+            echo "Review: grep -A30 'STORAGE ERROR CHECK' $LATEST"
+            exit 1
+        fi
+        if ! grep -Fq 'Overall controlled hardware status: PASS' "$LATEST"; then
+            echo "Refusing to set the control baseline because this snapshot predates the controlled-hardware check."
+            echo "Run: sudo media-status"
+            exit 1
+        fi
+        cp "$LATEST" "$CONTROL"
+        chmod 600 "$CONTROL"
+        {
+            echo "MEDIA-MACHINE CONTROL BASELINE"
+            echo "Set: $(date --iso-8601=seconds)"
+            echo "media-diffcontrol version: $SCRIPT_VERSION"
+            echo
+            grep -E '^Timestamp:|^Hostname:|^Kernel:|^media-status version:|^Overall controlled hardware status:|^Overall storage-error status:' "$CONTROL" || true
+        } > "$CONTROL_INFO"
+        chmod 600 "$CONTROL_INFO"
+        echo "================================================================"
+        echo " MEDIA-MACHINE CONTROL BASELINE SET"
+        echo "================================================================"
+        cat "$CONTROL_INFO"
+        echo
+        echo "Control: $CONTROL"
+        echo "================================================================"
+        exit 0
+        ;;
+    --show)
+        if [ ! -f "$CONTROL" ]; then
+            echo "No control baseline has been set."
+            exit 1
+        fi
+        if [ -f "$CONTROL_INFO" ]; then
+            cat "$CONTROL_INFO"
+        else
+            echo "Control file: $CONTROL"
+        fi
+        exit 0
+        ;;
+    "") MODE="full" ;;
+    --important) MODE="important" ;;
+    *) usage; exit 2 ;;
+esac
+
+if [ ! -f "$CONTROL" ]; then
+    echo "No control baseline has been set."
+    echo "Run sudo media-status, review it, then run sudo media-diffcontrol --set."
+    exit 1
+fi
+
+echo "================================================================"
+echo " MEDIA-MACHINE CONTROL DIFF"
+echo "================================================================"
+echo "media-diffcontrol version: $SCRIPT_VERSION"
+[ -f "$CONTROL_INFO" ] && grep '^Set:' "$CONTROL_INFO" || true
+echo "Control: $CONTROL"
+echo "Current: $LATEST"
+echo "================================================================"
+echo
+
+if [ "$MODE" = "important" ]; then
+    TMPOLD="$(mktemp)"
+    TMPNEW="$(mktemp)"
+    trap 'rm -f "$TMPOLD" "$TMPNEW"' EXIT
+    extract_important "$CONTROL" > "$TMPOLD"
+    extract_important "$LATEST" > "$TMPNEW"
+    diff --color=auto -u --label "CONTROL" --label "CURRENT" "$TMPOLD" "$TMPNEW"
+    STATUS=$?
+else
+    diff --color=auto -u --label "CONTROL" --label "CURRENT" "$CONTROL" "$LATEST"
+    STATUS=$?
+fi
+
+echo
+echo "================================================================"
+case "$STATUS" in
+    0) echo "No differences from control baseline." ;;
+    1) echo "Differences from control baseline shown above." ;;
+    *) echo "diff encountered an error."; exit "$STATUS" ;;
+esac
+echo "================================================================"
+exit 0

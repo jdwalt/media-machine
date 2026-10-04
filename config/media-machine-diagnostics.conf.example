@@ -1,0 +1,4 @@
+# Root-owned mode 0600; never commit deployed values.
+EXPECTED_HBA_SERIALS=("" "" "" "")
+EXPECTED_SRV_SERIAL=""
+EXPECTED_NVME_SERIAL=""

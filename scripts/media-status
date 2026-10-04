@@ -1,0 +1,385 @@
+#!/usr/bin/env bash
+
+set -u
+umask 077
+
+SCRIPT_VERSION="2.1.0-2026-08-17"
+LOGROOT="/var/log/media-machine"
+SNAPDIR="$LOGROOT/snapshots"
+LOGFILE="$LOGROOT/diagnostic.log"
+LATEST="$LOGROOT/latest.txt"
+
+EXPECTED_HBA_PCI_ID="1000:0072"
+EXPECTED_HBA_DRIVER="mpt3sas"
+# Populate locally. Device identities are deliberately absent from public source.
+EXPECTED_HBA_SERIALS=()
+EXPECTED_SRV_SERIAL=""
+EXPECTED_NVME_SERIAL=""
+CONFIG_FILE=/etc/media-machine-diagnostics.conf
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    echo "Create $CONFIG_FILE from the private configuration example." >&2
+    exit 2
+fi
+source "$CONFIG_FILE"
+if [[ ${#EXPECTED_HBA_SERIALS[@]} -ne 4 || -z "$EXPECTED_SRV_SERIAL" || -z "$EXPECTED_NVME_SERIAL" ]]; then
+    echo "Configure all six expected disk identities before collecting a baseline." >&2
+    exit 2
+fi
+EXPECTED_HDD_COUNT=5
+EXPECTED_HBA_DISK_COUNT=4
+EXPECTED_OPTICAL_COUNT=2
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "media-status must run with sudo so SMART data and snapshots are complete."
+    echo "Run: sudo media-status"
+    exit 1
+fi
+
+mkdir -p "$SNAPDIR"
+
+STAMP="$(date +%F_%H%M%S)"
+SNAPFILE="$SNAPDIR/$STAMP.txt"
+TMP="$(mktemp)"
+ERROR_TMP="$(mktemp)"
+trap 'rm -f "$TMP" "$ERROR_TMP"' EXIT
+
+section() {
+    echo "================================================================"
+    echo " $1"
+    echo "================================================================"
+}
+
+serial_present() {
+    lsblk -dn -o SERIAL 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -Fxq "$1"
+}
+
+serial_has_transport() {
+    local serial="$1"
+    local transport="$2"
+    lsblk -dn -o SERIAL,TRAN 2>/dev/null | awk -v s="$serial" -v t="$transport" '$1 == s && $2 == t { found=1 } END { exit !found }'
+}
+
+{
+section "MEDIA-MACHINE DIAGNOSTIC SNAPSHOT"
+echo "Timestamp: $(date --iso-8601=seconds)"
+echo "Hostname:  $(hostname)"
+echo "Kernel:    $(uname -r)"
+echo
+
+section "DIAGNOSTIC SCRIPT INFO"
+echo "media-status version: $SCRIPT_VERSION"
+echo
+
+section "CONTROLLED HARDWARE CHECK"
+CONTROL_FAIL=0
+
+if lspci -nn 2>/dev/null | grep -Fq "[$EXPECTED_HBA_PCI_ID]"; then
+    echo "PASS HBA PCI device: $EXPECTED_HBA_PCI_ID"
+else
+    echo "FAIL HBA PCI device missing: $EXPECTED_HBA_PCI_ID"
+    CONTROL_FAIL=1
+fi
+
+if lspci -nnk -d "$EXPECTED_HBA_PCI_ID" 2>/dev/null | grep -Fq "Kernel driver in use: $EXPECTED_HBA_DRIVER"; then
+    echo "PASS HBA driver bound: $EXPECTED_HBA_DRIVER"
+else
+    echo "FAIL HBA driver not bound: $EXPECTED_HBA_DRIVER"
+    CONTROL_FAIL=1
+fi
+
+for serial in "${EXPECTED_HBA_SERIALS[@]}"; do
+    if serial_present "$serial" && serial_has_transport "$serial" sas; then
+        echo "PASS HBA disk present on SAS path: $serial"
+    else
+        echo "FAIL HBA disk missing or wrong transport: $serial"
+        CONTROL_FAIL=1
+    fi
+done
+
+if serial_present "$EXPECTED_SRV_SERIAL" && serial_has_transport "$EXPECTED_SRV_SERIAL" sata; then
+    echo "PASS /srv HDD present on motherboard SATA: $EXPECTED_SRV_SERIAL"
+else
+    echo "FAIL /srv HDD missing or wrong transport: $EXPECTED_SRV_SERIAL"
+    CONTROL_FAIL=1
+fi
+
+if serial_present "$EXPECTED_NVME_SERIAL" && serial_has_transport "$EXPECTED_NVME_SERIAL" nvme; then
+    echo "PASS NVMe boot disk present: $EXPECTED_NVME_SERIAL"
+else
+    echo "FAIL NVMe boot disk missing or wrong transport: $EXPECTED_NVME_SERIAL"
+    CONTROL_FAIL=1
+fi
+
+HDD_COUNT="$(lsblk -dn -o TYPE,TRAN 2>/dev/null | awk '$1 == "disk" && ($2 == "sas" || $2 == "sata") {n++} END {print n+0}')"
+HBA_DISK_COUNT="$(lsblk -dn -o TYPE,TRAN 2>/dev/null | awk '$1 == "disk" && $2 == "sas" {n++} END {print n+0}')"
+OPTICAL_COUNT="$(lsblk -dn -o TYPE 2>/dev/null | awk '$1 == "rom" {n++} END {print n+0}')"
+
+if [ "$HDD_COUNT" -eq "$EXPECTED_HDD_COUNT" ]; then
+    echo "PASS SATA/SAS HDD count: $HDD_COUNT"
+else
+    echo "FAIL SATA/SAS HDD count: found $HDD_COUNT expected $EXPECTED_HDD_COUNT"
+    CONTROL_FAIL=1
+fi
+
+if [ "$HBA_DISK_COUNT" -eq "$EXPECTED_HBA_DISK_COUNT" ]; then
+    echo "PASS HBA disk count: $HBA_DISK_COUNT"
+else
+    echo "FAIL HBA disk count: found $HBA_DISK_COUNT expected $EXPECTED_HBA_DISK_COUNT"
+    CONTROL_FAIL=1
+fi
+
+if [ "$OPTICAL_COUNT" -eq "$EXPECTED_OPTICAL_COUNT" ]; then
+    echo "PASS optical-drive count: $OPTICAL_COUNT"
+else
+    echo "FAIL optical-drive count: found $OPTICAL_COUNT expected $EXPECTED_OPTICAL_COUNT"
+    CONTROL_FAIL=1
+fi
+
+if findmnt -rn /srv >/dev/null 2>&1; then
+    SRV_SOURCE="$(findmnt -rn -o SOURCE /srv)"
+    SRV_PARENT="$(lsblk -no PKNAME "$SRV_SOURCE" 2>/dev/null | head -1)"
+    SRV_SERIAL=""
+    if [ -n "$SRV_PARENT" ]; then
+        SRV_SERIAL="$(lsblk -dn -o SERIAL "/dev/$SRV_PARENT" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    fi
+    if [ "$SRV_SERIAL" = "$EXPECTED_SRV_SERIAL" ]; then
+        echo "PASS /srv mounted from expected disk: $EXPECTED_SRV_SERIAL"
+    else
+        echo "FAIL /srv mounted from unexpected source: $SRV_SOURCE serial=$SRV_SERIAL"
+        CONTROL_FAIL=1
+    fi
+else
+    echo "FAIL /srv is not mounted"
+    CONTROL_FAIL=1
+fi
+
+if [ "$CONTROL_FAIL" -eq 0 ]; then
+    echo "Overall controlled hardware status: PASS"
+else
+    echo "Overall controlled hardware status: FAIL"
+fi
+echo
+
+section "HBA / CONTROLLER"
+echo "--- PCI identity and driver ---"
+lspci -nnk -d "$EXPECTED_HBA_PCI_ID" 2>/dev/null || echo "HBA PCI device not found."
+echo
+echo "--- PCIe link ---"
+HBA_SLOT="$(lspci -Dnn 2>/dev/null | awk -v id="[$EXPECTED_HBA_PCI_ID]" 'index($0,id) {print $1; exit}')"
+if [ -n "$HBA_SLOT" ]; then
+    lspci -vv -s "$HBA_SLOT" 2>/dev/null | grep -E 'LnkCap:|LnkSta:' || true
+else
+    echo "PCIe link unavailable because HBA was not found."
+fi
+echo
+echo "--- mpt SAS host state ---"
+HBA_HOST_FOUND=0
+for host in /sys/class/scsi_host/host*; do
+    [ -r "$host/proc_name" ] || continue
+    PROC_NAME="$(cat "$host/proc_name")"
+    case "$PROC_NAME" in
+        mpt2sas|mpt3sas)
+            HBA_HOST_FOUND=1
+            echo "Host: $(basename "$host")"
+            echo "proc_name: $PROC_NAME"
+            for attr in state host_sas_address board_name board_assembly version_bios version_fw logging_level; do
+                [ -r "$host/$attr" ] && printf '%-20s %s\n' "$attr:" "$(cat "$host/$attr")"
+            done
+            echo
+            ;;
+    esac
+done
+[ "$HBA_HOST_FOUND" -eq 1 ] || echo "No bound mpt SAS host found."
+echo
+echo "--- Loaded modules ---"
+lsmod | grep -E '^mpt2sas|^mpt3sas|^raid_class|^scsi_transport_sas' || true
+echo
+
+section "HBA-ATTACHED DRIVE MAP"
+echo "Serial-first inventory; device letters are current-session aliases."
+lsblk -dn -o SERIAL,MODEL,SIZE,TRAN,HCTL,NAME 2>/dev/null | awk '$4 == "sas" {print}' | sort
+echo
+echo "--- SCSI transport map ---"
+lsscsi -t -g 2>/dev/null || true
+echo
+
+section "UPTIME / LOAD"
+uptime
+echo
+free -h
+echo
+
+section "PHYSICAL NETWORK"
+ip -br addr 2>/dev/null | awk '$1 !~ /^(lo|docker|br-|veth)/ {print}'
+echo
+ip route 2>/dev/null | grep -vE '(^| )docker|(^| )br-|(^| )veth|^172\.(1[6-9]|2[0-9]|3[01])\.' || true
+echo
+for iface in /sys/class/net/*; do
+    [ -e "$iface/device" ] || continue
+    name="$(basename "$iface")"
+    echo "[$name]"
+    ethtool "$name" 2>/dev/null | grep -E 'Speed:|Duplex:|Link detected:' || true
+    echo
+done
+
+section "USB TOPOLOGY / NEGOTIATED SPEEDS"
+echo "--- USB devices ---"
+lsusb 2>/dev/null || true
+echo
+echo "--- USB topology / negotiated speeds ---"
+lsusb -t 2>/dev/null || true
+echo
+
+section "FILESYSTEMS / MOUNTS"
+df -hT
+echo
+echo "--- /srv stable identity ---"
+findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS,UUID /srv 2>/dev/null || true
+echo
+
+section "BLOCK DEVICES"
+lsblk -o NAME,MAJ:MIN,SIZE,FSSIZE,FSUSE%,TYPE,FSTYPE,MODEL,SERIAL,TRAN,HCTL,MOUNTPOINTS
+echo
+echo "--- Serial-first disk inventory ---"
+lsblk -dn -o SERIAL,MODEL,SIZE,TRAN,HCTL,NAME 2>/dev/null | sort
+echo
+
+section "SCSI / OPTICAL DEVICES"
+lsscsi -g 2>/dev/null || true
+echo
+echo "--- Optical / SCSI device nodes ---"
+ls -l /dev/sg* /dev/sr* 2>/dev/null || true
+echo
+
+section "SMART HEALTH / INTEGRITY"
+while read -r dev type; do
+    [ "$type" = "disk" ] || continue
+    case "$dev" in
+        /dev/loop*|/dev/ram*|/dev/dm-*|/dev/md*) continue ;;
+    esac
+    SERIAL="$(lsblk -dn -o SERIAL "$dev" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    MODEL="$(lsblk -dn -o MODEL "$dev" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    echo "--- ${SERIAL:-unknown} | $MODEL | current node $dev ---"
+    smartctl -a "$dev" 2>&1 | grep -E \
+        'SMART overall-health self-assessment test result|SMART Health Status|Critical Warning:|Temperature:|Media and Data Integrity Errors:|Error Information Log Entries:|Reallocated_Sector_Ct|Reported_Uncorrect|Command_Timeout|Airflow_Temperature_Cel|Temperature_Celsius|Current_Pending_Sector|Offline_Uncorrectable|UDMA_CRC_Error_Count' \
+        || true
+    echo
+done < <(lsblk -dnpo NAME,TYPE)
+
+section "SMART USAGE COUNTERS"
+while read -r dev type; do
+    [ "$type" = "disk" ] || continue
+    case "$dev" in
+        /dev/loop*|/dev/ram*|/dev/dm-*|/dev/md*) continue ;;
+    esac
+    SERIAL="$(lsblk -dn -o SERIAL "$dev" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    echo "--- ${SERIAL:-unknown} | current node $dev ---"
+    smartctl -a "$dev" 2>&1 | grep -E 'Power_On_Hours|Power On Hours:|Data Units Read:|Data Units Written:|Percentage Used:' || true
+    echo
+done < <(lsblk -dnpo NAME,TYPE)
+
+section "DOCKER"
+if systemctl is-active --quiet docker; then
+    echo "Docker service: active"
+    echo
+    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+else
+    echo "Docker service: inactive"
+fi
+echo
+
+section "CORE SERVICES"
+for svc in docker containerd ssh smartmontools thermald systemd-networkd systemd-resolved unattended-upgrades; do
+    printf '%-26s %s\n' "$svc" "$(systemctl is-active "$svc" 2>/dev/null || true)"
+done
+echo
+
+section "TEMPERATURES"
+sensors 2>/dev/null || true
+echo
+
+section "CPU TEMPERATURES"
+CORETEMP_FOUND=0
+for h in /sys/class/hwmon/hwmon*; do
+    [ -r "$h/name" ] || continue
+    if grep -qx 'coretemp' "$h/name" 2>/dev/null; then
+        CORETEMP_FOUND=1
+        for f in "$h"/temp*_input; do
+            [ -r "$f" ] || continue
+            printf '%-18s %s\n' "$(basename "$f"):" "$(cat "$f")"
+        done
+    fi
+done
+[ "$CORETEMP_FOUND" -eq 1 ] || echo "coretemp telemetry unavailable."
+echo
+
+section "HBA / SCSI BOOT EVENTS"
+HBA_EVENTS="$(journalctl -k -b -o cat --no-pager 2>/dev/null | grep -Ei 'mpt3sas version|LSISAS2008: FWVersion|Fusion MPT SAS Host|host_add:|handle\(0x.*sas_address|port enable:|diag reset|failure at|invalid VPD tag' || true)"
+if [ -n "$HBA_EVENTS" ]; then
+    printf '%s\n' "$HBA_EVENTS"
+else
+    echo "No matching HBA/SCSI boot events found."
+fi
+echo
+
+section "OPTICAL MEDIA EVENTS"
+OPTICAL_EVENTS="$(journalctl -k -b -o cat --no-pager 2>/dev/null | grep -Ei 'I/O error, dev sr[0-9]|Buffer I/O error on dev sr[0-9]|blk_update_request.*sr[0-9]' || true)"
+if [ -n "$OPTICAL_EVENTS" ]; then
+    printf '%s\n' "$OPTICAL_EVENTS"
+    echo "Informational only: removable optical-media read events do not fail the permanent-storage gate."
+else
+    echo "No optical-media I/O events in the current boot."
+fi
+echo
+
+section "STORAGE ERROR CHECK"
+journalctl -k -b -o cat --no-pager 2>/dev/null | \
+    grep -Ei 'diag reset.*FAILED|failure at drivers/scsi/mpt|I/O error|buffer I/O|blk_update_request|hard resetting link|failed command|device offline|critical medium error|PCIe Bus Error|AER:.*error|fault_state|controller.*fault|task abort|rejecting I/O|link is slow to respond' | \
+    grep -Eiv 'I/O error, dev sr[0-9]|Buffer I/O error on dev sr[0-9]|blk_update_request.*sr[0-9]' \
+    > "$ERROR_TMP" || true
+if [ -s "$ERROR_TMP" ]; then
+    cat "$ERROR_TMP"
+    echo "Overall storage-error status: FAIL"
+else
+    echo "No matching storage, HBA, SATA, NVMe, or PCIe errors in the current boot."
+    echo "Overall storage-error status: PASS"
+fi
+echo
+
+section "AVAILABLE PACKAGE UPDATES"
+apt list --upgradable 2>/dev/null || true
+echo
+
+section "REBOOT REQUIRED"
+if [ -f /var/run/reboot-required ]; then
+    cat /var/run/reboot-required
+else
+    echo "No reboot required."
+fi
+echo
+
+section "FIRMWARE STATUS"
+if command -v fwupdmgr >/dev/null 2>&1; then
+    timeout 20 fwupdmgr get-upgrades 2>/dev/null || echo "Firmware query unavailable or timed out."
+else
+    echo "fwupdmgr not installed."
+fi
+echo
+
+section "END SNAPSHOT"
+} | tee "$TMP"
+
+cp "$TMP" "$LATEST"
+cp "$TMP" "$SNAPFILE"
+{
+    echo
+    cat "$TMP"
+} >> "$LOGFILE"
+
+chmod 600 "$LATEST" "$SNAPFILE" "$LOGFILE"
+
+echo
+echo "Saved:"
+echo "  Latest:    $LATEST"
+echo "  Snapshot:  $SNAPFILE"
+echo "  History:   $LOGFILE"

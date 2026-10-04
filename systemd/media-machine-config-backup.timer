@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly media-machine configuration backup
+
+[Timer]
+OnCalendar=Sun *-*-* 00:15:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=0
+Unit=media-machine-config-backup.service
+
+[Install]
+WantedBy=timers.target

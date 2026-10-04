@@ -1,0 +1,8 @@
+network:
+  version: 2
+  ethernets:
+    enp1s0f1:
+      dhcp4: false
+      dhcp6: false
+      addresses: [192.0.2.3/30]
+      optional: true

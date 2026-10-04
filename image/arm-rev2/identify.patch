@@ -1,0 +1,125 @@
+--- a/arm/ripper/identify.py
++++ b/arm/ripper/identify.py
+@@ -147,6 +147,38 @@
+     return True
+ 
+ 
++_GENERIC_DISC_TITLES = {
++    "",
++    "none",
++    "notidentified",
++    "dvdvideo",
++    "videodvd",
++    "dvd",
++    "video",
++    "dvdrom",
++    "bdrom",
++    "bdmv",
++    "bluray",
++    "nolabel",
++    "unknown",
++    "disc",
++    "disk",
++}
++
++
++def _is_generic_disc_title(title):
++    """Return True when a title is only a generic media label."""
++    if title is None:
++        return True
++
++    normalized = re.sub(
++        r"[^a-z0-9]+",
++        "",
++        str(title).strip().lower(),
++    )
++    return normalized in _GENERIC_DISC_TITLES
++
++
+ def identify_dvd(job):
+     """ Manipulates the DVD title and calls OMDB to try and
+     lookup the title """
+@@ -155,6 +187,8 @@
+     # Some older DVDs aren't actually labelled
+     if not job.label or job.label == "":
+         job.label = "not identified"
++    crc_match_found = False
++
+     try:
+         crc64 = pydvdid.compute(str(job.mountpoint))
+         dvd_title = f"{job.label}_{crc64}"
+@@ -183,6 +217,7 @@
+                 'hasnicetitle': True
+             }
+             utils.database_updater(args, job)
++            crc_match_found = True
+     except Exception as error:
+         logging.error(f"Pydvdid failed with the error: {error}")
+         dvd_title = str(job.label)
+@@ -198,14 +233,27 @@
+     dvd_title = re.sub(r"SKU\b", "", dvd_title)
+     logging.debug(f"dvd_title SKU$: {dvd_title}")
+ 
+-    # Do we really need metaselector if we have got from ARM online db?
+-    try:
+-        dvd_info_xml = metadata_selector(job, dvd_title, year)
+-        logging.debug(f"DVD_INFO_XML: {dvd_info_xml}")
+-        identify_loop(job, dvd_info_xml, dvd_title, year)
+-    except Exception:
+-        dvd_info_xml = None
+-        logging.debug("Cant connect to online service!")
++    # A successful CRC lookup already supplied title, year, media type,
++    # IMDb ID, and poster data. Do not replace it with a fuzzy search based
++    # on the filesystem label.
++    if crc_match_found:
++        logging.info(
++            "Preserving ARM online CRC result; "
++            "skipping metadata search based on disc label"
++        )
++    elif _is_generic_disc_title(dvd_title):
++        logging.info(
++            f"Skipping all metadata retries for generic disc label: "
++            f"{dvd_title!r}"
++        )
++    else:
++        try:
++            dvd_info_xml = metadata_selector(job, dvd_title, year)
++            logging.debug(f"DVD_INFO_XML: {dvd_info_xml}")
++            identify_loop(job, dvd_info_xml, dvd_title, year)
++        except Exception:
++            dvd_info_xml = None
++            logging.debug("Cant connect to online service!")
+     # Failsafe so that we always have a title.
+     if job.title is None or job.title == "None":
+         job.title = str(job.label)
+@@ -240,8 +288,10 @@
+     # Set out title from the job.label
+     # return if not identified
+     logging.debug(f"Title = {title}")
+-    if title == "not identified" or title is None or title == "":
+-        logging.info("Disc couldn't be identified")
++    if _is_generic_disc_title(title):
++        logging.info(
++            f"Disc couldn't be identified from generic title: {title!r}"
++        )
+         return
+     title = re.sub('[_ ]', "+", title.strip())
+ 
+@@ -307,8 +357,10 @@
+     # job.title with it. The guard in get_video_details() cannot catch this,
+     # because by the time it runs job.title is the bogus match rather than the
+     # placeholder. Refuse the search here instead, where every caller passes.
+-    if title is None or str(title).strip().lower() in ("", "not identified"):
+-        logging.info(f"Not searching for placeholder title: {title!r}")
++    if _is_generic_disc_title(title):
++        logging.info(
++            f"Not searching for generic or placeholder title: {title!r}"
++        )
+         return None
+     search_results = None
+     if cfg.arm_config['METADATA_PROVIDER'].lower() == "tmdb":
+@@ -400,4 +452,3 @@
+         logging.debug("Subtracting 1 year...")
+         response = metadata_selector(job, title, str(int(year) - 1))
+     return response
+-

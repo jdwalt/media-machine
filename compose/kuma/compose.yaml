@@ -1,0 +1,13 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma-kumamon
+    restart: unless-stopped
+    ports:
+      - "192.0.2.1:3001:3001"
+    volumes:
+      - uptime_kuma_secondary_data:/app/data
+
+volumes:
+  uptime_kuma_secondary_data:
+    name: uptime_kuma_secondary_data

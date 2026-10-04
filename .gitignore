@@ -1,0 +1,29 @@
+# Runtime secrets, recovery archives, host logs and private exports.
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+*.key
+*.pem
+id_rsa*
+id_ed25519*
+adbkey*
+authorized_keys
+known_hosts
+*.db
+*.sqlite*
+*.log
+*.tar
+*.tar.gz
+*.zip
+private/
+private-sources/
+exports/
+backups/
+logs/
+__pycache__/
+
+# Filled private copies of public configuration examples.
+*.conf
+!*.conf.example

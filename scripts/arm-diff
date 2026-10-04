@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+
+set -u
+
+SNAPDIR="/var/log/media-machine/arm-services/snapshots"
+
+usage() {
+    echo "Usage:"
+    echo "  arm-diff"
+    echo "  arm-diff --important"
+}
+
+mapfile -t FILES < <(
+    find "$SNAPDIR" \
+        -maxdepth 1 \
+        -type f \
+        -name '*.txt' \
+        -printf '%T@ %p\n' \
+        2>/dev/null |
+    sort -n |
+    tail -2 |
+    cut -d' ' -f2-
+)
+
+if [ "${#FILES[@]}" -lt 2 ]; then
+    echo "Need at least two arm-status snapshots."
+    echo
+    echo "Run:"
+    echo "  sudo arm-status"
+    echo "Make or observe a change, then run:"
+    echo "  sudo arm-status"
+    exit 1
+fi
+
+OLD="${FILES[0]}"
+NEW="${FILES[1]}"
+
+extract_important() {
+    local file="$1"
+
+    awk '
+    /^ (SERVICE OVERVIEW|CONTAINER CONFIGURATION|OPTICAL DEVICE IDENTITY|GPU \/ TRANSCODING DEVICE|ARM CONFIGURATION FINGERPRINTS|ARM DATABASE \/ STATE FILES|ARM WORKING STORAGE|RECENT ARM JOB SIGNALS|RECENT ARM CONTAINER WARNINGS \/ ERRORS|JELLYFIN STORAGE ACCESS|RECENT JELLYFIN WARNINGS \/ ERRORS|RECENT MEDIA SUBTITLE STREAMS|SERVICE DISK CAPACITY)$/ {
+        keep=1
+        print ""
+        print "================================================================"
+        print $0
+        print "================================================================"
+        next
+    }
+
+    /^ [A-Z][A-Z \/]+$/ {
+        keep=0
+        next
+    }
+
+    keep {
+        print
+    }
+    ' "$file"
+}
+
+case "${1:-}" in
+    "")
+        echo "================================================================"
+        echo " ARM / JELLYFIN SNAPSHOT DIFF"
+        echo "================================================================"
+        echo "Before: $OLD"
+        echo "After:  $NEW"
+        echo "================================================================"
+        echo
+
+        diff --color=auto -u "$OLD" "$NEW"
+        STATUS=$?
+        ;;
+
+    --important)
+        TMPOLD="$(mktemp)"
+        TMPNEW="$(mktemp)"
+
+        trap 'rm -f "$TMPOLD" "$TMPNEW"' EXIT
+
+        extract_important "$OLD" > "$TMPOLD"
+        extract_important "$NEW" > "$TMPNEW"
+
+        echo "================================================================"
+        echo " ARM / JELLYFIN IMPORTANT DIFF"
+        echo "================================================================"
+        echo "Before: $OLD"
+        echo "After:  $NEW"
+        echo
+        echo "Watching:"
+        echo "  container health, configuration, mounts, and devices"
+        echo "  optical and GPU access"
+        echo "  ARM configuration fingerprints and working storage"
+        echo "  recent ARM job outcomes and errors"
+        echo "  Jellyfin access, playback, and transcoding errors"
+        echo "  subtitle streams in recently created media"
+        echo "================================================================"
+        echo
+
+        diff --color=auto -u "$TMPOLD" "$TMPNEW"
+        STATUS=$?
+        ;;
+
+    *)
+        usage
+        exit 2
+        ;;
+esac
+
+echo
+echo "================================================================"
+
+case "$STATUS" in
+    0)
+        echo "No differences detected."
+        ;;
+    1)
+        echo "Differences shown above."
+        ;;
+    *)
+        echo "diff encountered an error."
+        exit "$STATUS"
+        ;;
+esac
+
+echo "================================================================"

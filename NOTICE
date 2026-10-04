@@ -1,0 +1,12 @@
+Media-machine homelab server
+Copyright 2026 Jack Walter
+
+Original repository material is licensed under the Apache License, Version 2.0.
+Upstream applications and adapted files retain their respective licenses.
+Build design, assembly, configuration and testing: Jack Walter.
+Documentation organization assistance: ChatGPT.
+
+ARM identify.py and the settings derived from ARM retain the upstream MIT license.
+See third-party/ARM-LICENSE and docs/provenance.md.
+
+The HandBrake installer retains its embedded Expat/MIT notice and source attribution.

@@ -1,0 +1,19 @@
+[Unit]
+Description=ARM and Jellyfin after media storage is mounted
+Requires=docker.service srv-media.mount
+After=docker.service srv-media.mount
+BindsTo=srv-media.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/mountpoint -q /srv/media
+ExecStartPre=/usr/bin/test -d /srv/media/movies
+ExecStartPre=/usr/bin/test -d /srv/media/tv
+ExecStart=/usr/bin/docker start arm-rippers jellyfin
+ExecStop=/usr/bin/docker stop -t 30 arm-rippers jellyfin
+TimeoutStartSec=120
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

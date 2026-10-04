@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -u
+
+CONFIG_FILE=/etc/arm-tablet-usb.conf
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    echo "Create $CONFIG_FILE with TABLET_SERIAL for the authorized tablet." >&2
+    exit 2
+fi
+source "$CONFIG_FILE"
+: "${TABLET_SERIAL:?Set TABLET_SERIAL}"
+TABLET_CONNECTED=0
+
+while true; do
+    if /usr/bin/adb -s "$TABLET_SERIAL" get-state 2>/dev/null | grep -qx "device"; then
+        /usr/bin/adb -s "$TABLET_SERIAL" reverse tcp:8080 tcp:8080 >/dev/null
+        /usr/bin/adb -s "$TABLET_SERIAL" reverse tcp:8081 tcp:8081 >/dev/null
+        if [ "$TABLET_CONNECTED" -eq 0 ]; then
+            sleep 2
+            /usr/bin/adb -s "$TABLET_SERIAL" shell monkey \
+                -p de.ozerov.fully \
+                -c android.intent.category.LAUNCHER \
+                1 >/dev/null 2>&1
+            TABLET_CONNECTED=1
+        fi
+    else
+        TABLET_CONNECTED=0
+    fi
+
+    sleep 5
+done

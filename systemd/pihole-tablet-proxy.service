@@ -1,0 +1,15 @@
+[Unit]
+Description=Localhost proxy from the ARM tablet to Pi-hole
+Requires=pihole-host-shim.service
+After=pihole-host-shim.service docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat \
+    TCP4-LISTEN:8081,bind=127.0.0.1,reuseaddr,fork \
+    TCP4:192.0.2.4:80
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

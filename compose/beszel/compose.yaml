@@ -1,0 +1,38 @@
+services:
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: beszel-docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:2375:2375"
+    read_only: true
+    tmpfs:
+      - /run
+
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: beszel-agent
+    restart: unless-stopped
+    depends_on:
+      - docker-socket-proxy
+    network_mode: host
+    volumes:
+      - ./beszel_agent_data:/var/lib/beszel-agent
+      - /mnt/storage-p1/.beszel:/extra-filesystems/sdc1__Storage-P1:ro
+      - /mnt/storage-p2/.beszel:/extra-filesystems/sda1__Storage-P2:ro
+      - /mnt/backup-p1/.beszel:/extra-filesystems/sdd1__Backup-P1:ro
+      - /mnt/backup-p2/.beszel:/extra-filesystems/sdb1__Backup-P2:ro
+      - /srv/.beszel:/extra-filesystems/sde1__Service-Data:ro
+      - /srv/storage/.beszel:/extra-filesystems/storage__Storage-Pool:ro
+      - /srv/backup-local/.beszel:/extra-filesystems/backup-local__Backup-Pool:ro
+    environment:
+      DISABLE_SSH: "true"
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      KEY: "${BESZEL_KEY:?Set BESZEL_KEY}"
+      TOKEN: "${BESZEL_TOKEN:?Set BESZEL_TOKEN}"
+      HUB_URL: "${BESZEL_HUB_URL:?Set BESZEL_HUB_URL}"

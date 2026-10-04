@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly media-machine configuration backup
+RequiresMountsFor=/srv/storage
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/media-machine-config-backup
+TimeoutStartSec=30min

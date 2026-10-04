@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+set -u
+
+CONFIG_FILE=/etc/uptime-kuma-task-monitor.conf
+PACIFIC_TZ=America/Los_Angeles
+PUSH_FAILED=0
+
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    echo "Cannot read $CONFIG_FILE" >&2
+    exit 1
+fi
+
+source "$CONFIG_FILE"
+
+: "${REPLICATION_PUSH_URL:?Set REPLICATION_PUSH_URL}"
+: "${CONFIG_BACKUP_PUSH_URL:?Set CONFIG_BACKUP_PUSH_URL}"
+
+push_status() {
+    local raw_url="$1"
+    local status="$2"
+    local message="$3"
+    local base_url="${raw_url%%\?*}"
+
+    if ! /usr/bin/curl \
+        --fail \
+        --silent \
+        --show-error \
+        --max-time 15 \
+        --retry 2 \
+        --get \
+        --data-urlencode "status=$status" \
+        --data-urlencode "msg=$message" \
+        --data-urlencode "ping=" \
+        "$base_url" >/dev/null
+    then
+        /usr/bin/logger -t uptime-kuma-task-monitor \
+            "Failed to report monitor status"
+        PUSH_FAILED=1
+    fi
+}
+
+check_service() {
+    local unit="$1"
+    local push_url="$2"
+    local label="$3"
+
+    local result
+    local exit_status
+    local active_state
+    local sub_state
+    local completed
+    local completed_date
+    local today
+
+    result=$(/usr/bin/systemctl show "$unit" -p Result --value)
+    exit_status=$(/usr/bin/systemctl show "$unit" -p ExecMainStatus --value)
+    active_state=$(/usr/bin/systemctl show "$unit" -p ActiveState --value)
+    sub_state=$(/usr/bin/systemctl show "$unit" -p SubState --value)
+    completed=$(/usr/bin/systemctl show "$unit" -p ExecMainExitTimestamp --value)
+
+    today=$(TZ="$PACIFIC_TZ" /usr/bin/date +%F)
+
+    if ! completed_date=$(
+        TZ="$PACIFIC_TZ" /usr/bin/date -d "$completed" +%F 2>/dev/null
+    ); then
+        completed_date=unknown
+    fi
+
+    if [[ "$result" == "success" &&
+          "$exit_status" == "0" &&
+          "$active_state" == "inactive" &&
+          "$sub_state" == "dead" &&
+          "$completed_date" == "$today" ]]
+    then
+        push_status "$push_url" up \
+            "$label completed successfully at $completed"
+    else
+        push_status "$push_url" down \
+            "$label unhealthy: result=$result exit=$exit_status state=$active_state/$sub_state completed=$completed"
+    fi
+}
+
+check_service \
+    storage-replication.service \
+    "$REPLICATION_PUSH_URL" \
+    "Storage replication"
+
+if [[ "$(TZ="$PACIFIC_TZ" /usr/bin/date +%u)" == "7" ]]; then
+    check_service \
+        media-machine-config-backup.service \
+        "$CONFIG_BACKUP_PUSH_URL" \
+        "Media-machine configuration backup"
+fi
+
+exit "$PUSH_FAILED"

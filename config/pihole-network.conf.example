@@ -1,0 +1,5 @@
+# Documentation addresses. Substitute the private LAN values before use.
+PARENT_INTERFACE="enp5s0"
+LAN_SUBNET="192.0.2.0/24"
+LAN_GATEWAY="192.0.2.2"
+PIHOLE_IP_RANGE="192.0.2.4/32"

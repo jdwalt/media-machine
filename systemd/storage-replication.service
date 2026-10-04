@@ -1,0 +1,13 @@
+[Unit]
+Description=Replicate primary storage pool to local backup pool
+RequiresMountsFor=/srv/storage /srv/backup-local
+ConditionPathIsMountPoint=/srv/storage
+ConditionPathIsMountPoint=/srv/backup-local
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/replicate-storage-local
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=infinity

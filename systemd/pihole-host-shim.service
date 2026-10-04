@@ -1,0 +1,13 @@
+[Unit]
+Description=Host macvlan shim for the Pi-hole container
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pihole-host-shim start
+ExecStop=/usr/local/sbin/pihole-host-shim stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

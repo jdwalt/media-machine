@@ -1,0 +1,11 @@
+[Unit]
+Description=Report backup task health to Uptime Kuma
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/report-backup-health-to-kuma
+User=root
+Group=root
+TimeoutStartSec=90

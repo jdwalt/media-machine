@@ -1,0 +1,26 @@
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+# / was on /dev/nvme0n1p2 during curtin installation
+/dev/disk/by-uuid/ROOT_UUID / ext4 defaults 0 1
+# /boot/efi was on /dev/nvme0n1p1 during curtin installation
+/dev/disk/by-uuid/EFI_UUID /boot/efi vfat defaults 0 1
+/swap.img	none	swap	sw	0	0
+UUID=SCRATCH_UUID /srv ext4 defaults,nofail 0 2
+
+# BEGIN MEDIA STORAGE POOLS
+UUID=STORAGE_P1_UUID /mnt/storage-p1 ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
+UUID=STORAGE_P2_UUID /mnt/storage-p2 ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
+UUID=BACKUP_P1_UUID /mnt/backup-p1 ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
+UUID=BACKUP_P2_UUID /mnt/backup-p2 ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
+/mnt/storage-p1/data:/mnt/storage-p2/data /srv/storage mergerfs defaults,nofail,allow_other,cache.files=off,category.create=mfs,func.getattr=newest,dropcacheonclose=false,minfreespace=100G,fsname=storage,x-systemd.requires-mounts-for=/mnt/storage-p1,x-systemd.requires-mounts-for=/mnt/storage-p2 0 0
+/mnt/backup-p1/data:/mnt/backup-p2/data /srv/backup-local mergerfs defaults,nofail,allow_other,cache.files=off,category.create=mfs,func.getattr=newest,dropcacheonclose=false,minfreespace=100G,fsname=backup-local,x-systemd.requires-mounts-for=/mnt/backup-p1,x-systemd.requires-mounts-for=/mnt/backup-p2 0 0
+# END MEDIA STORAGE POOLS
+
+# BEGIN LIVE MEDIA BIND
+/srv/storage/media /srv/media none bind,nofail,x-systemd.requires-mounts-for=/srv/storage 0 0
+# END LIVE MEDIA BIND

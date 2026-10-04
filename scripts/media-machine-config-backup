@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="/srv/storage/homelab/media-machine"
+STAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+FINAL="$BASE/backups/$STAMP"
+WORK="$BASE/backups/incomplete-$STAMP"
+PREVIOUS="$(readlink -f "$BASE/LATEST" 2>/dev/null || true)"
+LOCK="/run/lock/media-machine-config-backup.lock"
+
+CONTAINERS=(
+    pihole
+    arm-rippers
+    jellyfin
+    portainer
+    uptime-kuma-kumamon
+)
+
+SOURCE_DIRECTORIES=(
+    /opt/pihole
+    /opt/portainer
+    /opt/uptime-kuma-secondary
+    /var/lib/docker/volumes/portainer_data/_data
+    /var/lib/docker/volumes/uptime_kuma_secondary_data/_data
+    /srv/arm/config
+    /srv/arm/logs
+    /home/arm
+    /home/armhost/jellyfin/config
+)
+
+exec 9>"$LOCK"
+flock -n 9 || {
+    echo "Another configuration backup is already running."
+    exit 1
+}
+
+for CONTAINER in "${CONTAINERS[@]}"; do
+    if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
+        echo "Required container not found: $CONTAINER"
+        exit 1
+    fi
+done
+
+for SOURCE_DIRECTORY in "${SOURCE_DIRECTORIES[@]}"; do
+    if [[ ! -d "$SOURCE_DIRECTORY" ]]; then
+        echo "Required source directory not found: $SOURCE_DIRECTORY"
+        exit 1
+    fi
+done
+
+mkdir -p "$WORK"
+
+RUNNING=()
+for CONTAINER in "${CONTAINERS[@]}"; do
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER")" == "true" ]]; then
+        RUNNING+=("$CONTAINER")
+    fi
+done
+
+restart_containers() {
+    if ((${#RUNNING[@]})); then
+        docker start "${RUNNING[@]}" >/dev/null || true
+    fi
+}
+trap restart_containers EXIT
+
+sync_tree() {
+    local SOURCE="$1"
+    local RELATIVE="$2"
+    shift 2
+
+    local OPTIONS=(-aHAX --numeric-ids)
+
+    if [[ -n "$PREVIOUS" && -d "$PREVIOUS/$RELATIVE" ]]; then
+        OPTIONS+=(--link-dest="$PREVIOUS/$RELATIVE")
+    fi
+
+    mkdir -p "$WORK/$RELATIVE"
+    rsync "${OPTIONS[@]}" "$@" "$SOURCE/" "$WORK/$RELATIVE/"
+}
+
+if ((${#RUNNING[@]})); then
+    docker stop "${RUNNING[@]}"
+fi
+
+sync_tree /opt/pihole opt/pihole
+sync_tree /opt/portainer opt/portainer
+sync_tree /opt/uptime-kuma-secondary opt/uptime-kuma-secondary
+
+sync_tree \
+    /var/lib/docker/volumes/portainer_data/_data \
+    var/lib/docker/volumes/portainer_data/_data
+
+sync_tree \
+    /var/lib/docker/volumes/uptime_kuma_secondary_data/_data \
+    var/lib/docker/volumes/uptime_kuma_secondary_data/_data
+
+sync_tree /srv/arm/config srv/arm/config
+sync_tree /srv/arm/logs srv/arm/logs
+
+sync_tree /home/arm home/arm \
+    --exclude='/abcde.*' \
+    --exclude='/media/***' \
+    --exclude='/music/***' \
+    --exclude='/logs/***'
+
+sync_tree \
+    /home/armhost/jellyfin/config \
+    home/armhost/jellyfin/config
+
+mkdir -p "$WORK/host"
+
+CANDIDATES=(
+    etc/fstab
+    etc/hostname
+    etc/hosts
+    etc/netplan
+    etc/NetworkManager/system-connections
+    etc/systemd/system
+    etc/docker
+    etc/udev/rules.d
+    etc/modprobe.d
+    etc/default/grub
+    etc/apt/sources.list
+    etc/apt/sources.list.d
+    etc/ssh
+    etc/crontab
+    etc/cron.d
+    var/spool/cron/crontabs
+    usr/local/bin
+    usr/local/sbin
+)
+
+PATHS=()
+for ITEM in "${CANDIDATES[@]}"; do
+    [[ -e "/$ITEM" ]] && PATHS+=("$ITEM")
+done
+
+tar --acls --xattrs --numeric-owner -czpf \
+    "$WORK/host/host-config.tar.gz" \
+    -C / "${PATHS[@]}"
+
+dpkg-query -W -f='${binary:Package}\t${Version}\n' \
+    > "$WORK/host/packages.tsv"
+
+docker image ls --no-trunc \
+    > "$WORK/host/docker-images.txt"
+
+docker inspect "${CONTAINERS[@]}" \
+    > "$WORK/host/docker-inspect.json"
+
+lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINTS \
+    > "$WORK/host/storage-layout.txt"
+
+findmnt --real \
+    > "$WORK/host/mounts.txt"
+
+systemctl list-unit-files --state=enabled \
+    > "$WORK/host/enabled-services.txt"
+
+systemctl list-timers --all \
+    > "$WORK/host/systemd-timers.txt"
+
+ip -brief address \
+    > "$WORK/host/network-addresses.txt"
+
+ip route \
+    > "$WORK/host/network-routes.txt"
+
+{
+    getent passwd armhost arm
+    id armhost
+    id arm
+} > "$WORK/host/service-users.txt"
+
+chmod -R go-rwx "$WORK/host"
+
+(
+    cd "$WORK"
+
+    find . -type f ! -name SHA256SUMS -print0 |
+        sort -z |
+        xargs -0 sha256sum > SHA256SUMS
+)
+
+mv "$WORK" "$FINAL"
+ln -sfn "backups/$STAMP" "$BASE/LATEST"
+
+echo "Completed snapshot: $FINAL"
+du -sh "$FINAL"

@@ -1,0 +1,197 @@
+{
+  "description": "Public adapted source hashes; not private host hashes",
+  "files": [
+    {
+      "path": "scripts/README.md",
+      "sha256": "c5609ad59a41b86ececdd70a4f4df208fe9462f5bb01d05761f4c41883f06177"
+    },
+    {
+      "path": "scripts/arm-diff",
+      "sha256": "6fb0ce099adb35fbf7020883ef7248a285214a7f895e0f625b9e66329742541b"
+    },
+    {
+      "path": "scripts/arm-status",
+      "sha256": "a4399fd989704bb454e275b32ef7e4527c4f03e064197aab5a6d3f9a84a5c05b"
+    },
+    {
+      "path": "scripts/arm-tablet-usb",
+      "sha256": "42e009f7369b371fc16ba51d62b8a076f7e26f2e09fa80d14c3226f1cb67ba38"
+    },
+    {
+      "path": "scripts/create-pihole-network",
+      "sha256": "e3ee8d969128306fba315d7a82196fc232dfb8bd640438d0f9baccf1980959ef"
+    },
+    {
+      "path": "scripts/media-diff",
+      "sha256": "d7d99dcccde3323e3c421761dbd988d5d72eb6f56fae6afa2fb8ee322ab73dcf"
+    },
+    {
+      "path": "scripts/media-diffcontrol",
+      "sha256": "62b26b004d7623724b03d4edf0d496da73cf30631e846bb33a8fac4048410f7a"
+    },
+    {
+      "path": "scripts/media-machine-config-backup",
+      "sha256": "566f1132d47f737cb9be1106d9797484c21f4a560be650aa719a0c0b878aee2a"
+    },
+    {
+      "path": "scripts/media-status",
+      "sha256": "e8366778566a33d24137ddc516d55a0efc8fbef1e2545296943fb62fd3599bf6"
+    },
+    {
+      "path": "scripts/pihole-host-shim",
+      "sha256": "2ddbf380e2ce4125226015c94dad2c44be3487ef9db7e20d05f5136de817c0a1"
+    },
+    {
+      "path": "scripts/replicate-storage-local",
+      "sha256": "8814a5cdb4b8224f2f8e95371256cb9aee7af061b98ba7e295757bc3f901f570"
+    },
+    {
+      "path": "scripts/report-backup-health-to-kuma",
+      "sha256": "baf06f6c7e015994087cfd3682b5010514657f7b3ba3edebf0cf0f80e3b9fbb5"
+    },
+    {
+      "path": "systemd/arm-tablet-usb.service",
+      "sha256": "c3e0bed97f1c3b485a6317c4aeb7fb78177811f417d436f20b380c77173bed64"
+    },
+    {
+      "path": "systemd/media-containers.service",
+      "sha256": "a19da4605cdb90dcab4828f67187eeebe76dffca08970b838003a83440081271"
+    },
+    {
+      "path": "systemd/media-machine-config-backup.service",
+      "sha256": "dbbf6d31381f7181d41ae3d68866aef4aed7f984e2765748f82b7be3be28fe3d"
+    },
+    {
+      "path": "systemd/media-machine-config-backup.timer",
+      "sha256": "5ea87eb4f774ade50b557830d8af3ccdb365b55340954efca11b27cc018b8b09"
+    },
+    {
+      "path": "systemd/pihole-host-shim.service",
+      "sha256": "26f30142214de13054817e833d776e07852b882f908456565e8d6991069c450a"
+    },
+    {
+      "path": "systemd/pihole-tablet-proxy.service",
+      "sha256": "87c88155cbdf23d726f32350d1f1bdf20fc25ad18a01ebfc6f0bcf32fd88f235"
+    },
+    {
+      "path": "systemd/storage-replication.service",
+      "sha256": "ac2cd2f69de5082a31aac004e8d0fa4273426bb47a37332e14bb62afb9b1f7d4"
+    },
+    {
+      "path": "systemd/storage-replication.timer",
+      "sha256": "0ade43701625019f48cf04661d2155432c2c8f891d835926202732c219d61661"
+    },
+    {
+      "path": "systemd/uptime-kuma-task-monitor.service",
+      "sha256": "db5896306e805468ee42f291015de9ccfa97e91f79d39151f844024146f0242d"
+    },
+    {
+      "path": "systemd/uptime-kuma-task-monitor.timer",
+      "sha256": "42686ddc2d8130560d3494ac1741ca449f4749c0dd2eb056795df874ba2331a5"
+    },
+    {
+      "path": "compose/arm/compose.json",
+      "sha256": "43ac2adff44486c8deba5c2e26e0a271467f364427f83e65caad4e6f137f9488"
+    },
+    {
+      "path": "compose/beszel/compose.yaml",
+      "sha256": "72911e030cdb4f8e85333a7a3a1c24952a67316313bf7b7d50d0832938906931"
+    },
+    {
+      "path": "compose/beszel/secrets.env.example",
+      "sha256": "cb0e0db92416e0e1e2ed3e6fbf706b1726bc53271d7f65fc65bbd4985bf00752"
+    },
+    {
+      "path": "compose/jellyfin/compose.json",
+      "sha256": "a691048526ef1c4ccfc1ec1dc036b4280462e08e9f5f819ba0d2f81122c3ac8e"
+    },
+    {
+      "path": "compose/kuma/compose.yaml",
+      "sha256": "7e4b124d6fbf577266d690e62676a0037863b4eacbdc2d42a5761f99f3dd7f64"
+    },
+    {
+      "path": "compose/pihole/compose.yaml",
+      "sha256": "998549bb1c11d0e4fb157fe8db34b9f4d6feb3ba12691de1df1da529ec9667d6"
+    },
+    {
+      "path": "compose/pihole/secrets.env.example",
+      "sha256": "cc3af2c9eca0af1436df0a64ef78582b5060037443a6968f7d375eb6479b6a31"
+    },
+    {
+      "path": "compose/portainer/compose.yaml",
+      "sha256": "739e0186942e0ff0dbb93edb5d2c4ab7f795884211e48011be343363579fa19f"
+    },
+    {
+      "path": "compose/scrutiny/compose.yaml",
+      "sha256": "d7fd058d6267a56e800e650d4901472a4063b5903de6b213269ed69cbe479f8d"
+    },
+    {
+      "path": "config/arm/arm.yaml.example",
+      "sha256": "78761af1364263f33124368a649de5be943420787867dd4eeb12351ee1785166"
+    },
+    {
+      "path": "config/arm-tablet-usb.conf.example",
+      "sha256": "271912305ac1b156f26bf76138e32c4755e5f551e65afc9d68b0787f20d4f3df"
+    },
+    {
+      "path": "config/fstab.example",
+      "sha256": "eda10e2c42d00cc3a6f0833cd3828575b11d7bcec6bac12c17793d0ef49f544a"
+    },
+    {
+      "path": "config/media-machine-diagnostics.conf.example",
+      "sha256": "82d6a58f7c64151dbf1788b6da93aa8ba93eb5d32922a3ab599ad7a9ecd8c6c3"
+    },
+    {
+      "path": "config/netplan/50-cloud-init.yaml",
+      "sha256": "1d21b1d953a38e71797d7b2e472873cafb130b5fe5c5a3250b9504e88002909e"
+    },
+    {
+      "path": "config/netplan/60-direct-10gbe.yaml",
+      "sha256": "a4104a182c5db6480782ef90689379d46213b73b6273b6054dc15af1d505c037"
+    },
+    {
+      "path": "config/pihole-network.conf.example",
+      "sha256": "29488ece0492b9ca85b778d02d8e8fdd3cd8b51a3f0dbd743cd5012614c7dc5f"
+    },
+    {
+      "path": "config/samba/smb.conf.example",
+      "sha256": "e2f59e9f0ddb1b47663c926a75e002ef52d6a85aee301cff384585fae14eb41a"
+    },
+    {
+      "path": "config/ssh/50-cloud-init.conf.example",
+      "sha256": "6bf43c7543d384fe7c3442bd97b1c91b9da62b51521184b6c1e421a7ef8bac1d"
+    },
+    {
+      "path": "config/ssh/sshd_config.example",
+      "sha256": "81491555f4bede8733123bab4228e3392daa91c7f81749e0a4d88717bf5714ce"
+    },
+    {
+      "path": "config/uptime-kuma-task-monitor.conf.example",
+      "sha256": "b1fbfc8d11ac61fb70afa14ecd6141f52aae169d85800e7a04c8c7051ae135c7"
+    },
+    {
+      "path": "image/arm-qsv-base/Dockerfile",
+      "sha256": "3ff3e1fc4cb11b2765a09131147cc147934a0b4688c0f3fe1bac3640c5cbaa63"
+    },
+    {
+      "path": "image/arm-qsv-base/install_handbrake-1.9.2.sh",
+      "sha256": "50cce25653f15d55f01b77d15b917efda58e6d974241f3a2869713901494ad6c"
+    },
+    {
+      "path": "image/arm-rev2/Dockerfile",
+      "sha256": "3a14a266316e2b955371e8032dbf84dfce3551b44fe94a87190e7f657ccc0cbb"
+    },
+    {
+      "path": "image/arm-rev2/identify.patch",
+      "sha256": "22fbaacf27e88529132f31b10027bb51eab7ae399c257e3ff40b122407a4e1db"
+    },
+    {
+      "path": "image/arm-rev2/identify.py",
+      "sha256": "f33fa61823fb7abfa05fad5b33355187aea34885d11a3bd3c70249e6ff69f14c"
+    },
+    {
+      "path": "third-party/ARM-LICENSE",
+      "sha256": "99b9e6278c2b31684908fd9bf14e6d66d2679033834af45a2091d48cac881e99"
+    }
+  ]
+}

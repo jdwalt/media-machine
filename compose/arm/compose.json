@@ -1,0 +1,41 @@
+{
+  "name": "arm-qsv",
+  "services": {
+    "arm-rippers": {
+      "container_name": "arm-rippers",
+      "devices": [
+        "/dev/sr0:/dev/sr0:rwm",
+        "/dev/sg0:/dev/sg0:rwm",
+        "/dev/dri/renderD128:/dev/dri/renderD128:rwm"
+      ],
+      "environment": {
+        "ARM_GID": "1001",
+        "ARM_UID": "1001",
+        "TZ": "America/Los_Angeles"
+      },
+      "image": "arm-qsv:2.24.3-hb1.9.2-ident-rev2-20260818",
+      "network_mode": "bridge",
+      "ports": [
+        {
+          "protocol": "tcp",
+          "published": "8080",
+          "target": 8080
+        }
+      ],
+      "privileged": true,
+      "pull_policy": "never",
+      "restart": "no",
+      "security_opt": [
+        "label=disable"
+      ],
+      "volumes": [
+        "/srv/media/music:/home/arm/music",
+        "/srv/media:/home/arm/media/completed",
+        "/srv/arm/logs:/home/arm/logs",
+        "/srv/arm:/home/arm/media",
+        "/srv/arm/config:/etc/arm/config",
+        "/home/arm:/home/arm"
+      ]
+    }
+  }
+}

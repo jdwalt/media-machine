@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+SHIM_NAME="pihole-shim"
+PARENT_INTERFACE="enp5s0"
+SHIM_ADDRESS="192.0.2.5/32"
+PIHOLE_ADDRESS="192.0.2.4"
+
+case "${1:-}" in
+    start)
+        if ! ip link show "$SHIM_NAME" >/dev/null 2>&1; then
+            ip link add "$SHIM_NAME" \
+                link "$PARENT_INTERFACE" \
+                type macvlan \
+                mode bridge
+        fi
+
+        ip addr replace "$SHIM_ADDRESS" dev "$SHIM_NAME"
+        ip link set "$SHIM_NAME" up
+        ip route replace "$PIHOLE_ADDRESS/32" \
+            dev "$SHIM_NAME" \
+            src "${SHIM_ADDRESS%/*}"
+        ;;
+
+    stop)
+        ip route del "$PIHOLE_ADDRESS/32" \
+            dev "$SHIM_NAME" 2>/dev/null || true
+        ip link del "$SHIM_NAME" 2>/dev/null || true
+        ;;
+
+    *)
+        echo "Usage: $0 start|stop" >&2
+        exit 2
+        ;;
+esac

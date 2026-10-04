@@ -1,0 +1,3 @@
+# Root-owned mode 0600. Shell assignments sourced by the reporting helper.
+REPLICATION_PUSH_URL=""
+CONFIG_BACKUP_PUSH_URL=""

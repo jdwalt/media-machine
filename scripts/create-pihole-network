@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Public reconstruction from collected macvlan driver, parent and IPAM shape.
+# Run manually during deployment, before creating Pi-hole. Changes Docker networking.
+set -euo pipefail
+CONFIG_FILE="${1:-/etc/pihole-network.conf}"
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    echo "Create $CONFIG_FILE from config/pihole-network.conf.example." >&2
+    exit 2
+fi
+source "$CONFIG_FILE"
+: "${PARENT_INTERFACE:?Set PARENT_INTERFACE}"
+: "${LAN_SUBNET:?Set LAN_SUBNET}"
+: "${LAN_GATEWAY:?Set LAN_GATEWAY}"
+: "${PIHOLE_IP_RANGE:?Set PIHOLE_IP_RANGE}"
+case "$LAN_SUBNET $LAN_GATEWAY $PIHOLE_IP_RANGE" in
+    *192.0.2.*|*198.51.100.*|*203.0.113.*)
+        echo "Replace documentation addresses with private deployment values first." >&2
+        exit 2
+        ;;
+esac
+if docker network inspect pihole_lan >/dev/null 2>&1; then
+    echo "pihole_lan already exists. Review it manually; no change made." >&2
+    exit 1
+fi
+docker network create \
+    --driver macvlan \
+    --opt "parent=$PARENT_INTERFACE" \
+    --subnet "$LAN_SUBNET" \
+    --gateway "$LAN_GATEWAY" \
+    --ip-range "$PIHOLE_IP_RANGE" \
+    pihole_lan

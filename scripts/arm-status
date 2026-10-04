@@ -1,0 +1,447 @@
+#!/usr/bin/env bash
+
+set -u
+umask 077
+
+LOGROOT="/var/log/media-machine/arm-services"
+SNAPDIR="$LOGROOT/snapshots"
+LOGFILE="$LOGROOT/diagnostic.log"
+LATEST="$LOGROOT/latest.txt"
+
+STAMP="$(date '+%Y-%m-%d_%H%M%S')"
+SNAPFILE="$SNAPDIR/${STAMP}.txt"
+TMP="$(mktemp)"
+
+mkdir -p "$LOGROOT" "$SNAPDIR"
+
+cleanup() {
+    rm -f "$TMP"
+}
+trap cleanup EXIT
+
+section() {
+    echo
+    echo "================================================================"
+    echo " $1"
+    echo "================================================================"
+}
+
+run() {
+    "$@" 2>&1 || true
+}
+
+redact() {
+    sed -E \
+        -e 's/([?&](api_key|api-key|token)=)[^&[:space:]]+/\1REDACTED/Ig' \
+        -e 's/(Authorization:[[:space:]]*(Bearer|Basic)[[:space:]]+)[^[:space:]]+/\1REDACTED/Ig'
+}
+
+container_exists() {
+    docker inspect "$1" >/dev/null 2>&1
+}
+
+container_summary() {
+    local container="$1"
+
+    if ! container_exists "$container"; then
+        echo "$container: not found"
+        return
+    fi
+
+    docker inspect "$container" --format '
+Name:             {{.Name}}
+Image:            {{.Config.Image}}
+Image ID:         {{.Image}}
+Created:          {{.Created}}
+Status:           {{.State.Status}}
+Started:          {{.State.StartedAt}}
+Restart count:    {{.RestartCount}}
+Exit code:        {{.State.ExitCode}}
+Health:           {{if .State.Health}}{{.State.Health.Status}}{{else}}not configured{{end}}
+Privileged:       {{.HostConfig.Privileged}}
+Restart policy:   {{.HostConfig.RestartPolicy.Name}}
+CPU set:          {{if .HostConfig.CpusetCpus}}{{.HostConfig.CpusetCpus}}{{else}}unrestricted{{end}}
+CPU quota:        {{.HostConfig.CpuQuota}}
+Memory limit:     {{if .HostConfig.Memory}}{{.HostConfig.Memory}}{{else}}unrestricted{{end}}
+Network mode:     {{.HostConfig.NetworkMode}}
+'
+
+    echo "--- Explicit device mappings ---"
+
+    docker inspect "$container" \
+        --format '{{range .HostConfig.Devices}}{{println .PathOnHost "->" .PathInContainer "permissions=" .CgroupPermissions}}{{else}}None{{end}}'
+
+    echo "--- Mounts ---"
+
+    docker inspect "$container" \
+        --format '{{range .Mounts}}{{println .Type ":" .Source "->" .Destination "rw=" .RW}}{{else}}None{{end}}'
+
+    echo "--- Published ports ---"
+    docker port "$container" 2>&1 || true
+}
+
+{
+    echo "================================================================"
+    echo " ARM / JELLYFIN SERVICE SNAPSHOT"
+    echo "================================================================"
+    echo "Timestamp: $(date --iso-8601=seconds)"
+    echo "Hostname:  $(hostname)"
+    echo "Kernel:    $(uname -r)"
+
+    section "SERVICE OVERVIEW"
+
+    printf "%-18s %-12s %-12s %-10s\n" \
+        "CONTAINER" "STATE" "HEALTH" "RESTARTS"
+
+    for container in arm-rippers jellyfin; do
+        if container_exists "$container"; then
+            docker inspect "$container" \
+                --format '{{printf "%-18s %-12s " .Name .State.Status}}{{if .State.Health}}{{printf "%-12s " .State.Health.Status}}{{else}}{{printf "%-12s " "not-set"}}{{end}}{{printf "%-10d" .RestartCount}}'
+        else
+            printf "%-18s %-12s\n" "$container" "not-found"
+        fi
+    done
+
+    section "CONTAINER CONFIGURATION"
+
+    for container in arm-rippers jellyfin; do
+        echo
+        echo "===== $container ====="
+        container_summary "$container"
+    done
+
+    section "LIVE RESOURCE USE"
+
+    if container_exists arm-rippers || container_exists jellyfin; then
+        docker stats --no-stream \
+            --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.BlockIO}}\t{{.NetIO}}\t{{.PIDs}}' \
+            arm-rippers jellyfin 2>&1 || true
+    else
+        echo "ARM and Jellyfin containers not found."
+    fi
+
+    section "RUNNING SERVICE PROCESSES"
+
+    for container in arm-rippers jellyfin; do
+        echo
+        echo "===== $container ====="
+
+        if container_exists "$container"; then
+            docker top "$container" \
+                -eo pid,ppid,user,stat,etime,pcpu,pmem,args \
+                2>&1 || true
+        else
+            echo "Container not found."
+        fi
+    done
+
+    section "OPTICAL DEVICE IDENTITY"
+
+    if command -v lsscsi >/dev/null 2>&1; then
+        run lsscsi -g
+    else
+        echo "lsscsi not installed"
+    fi
+
+    echo
+    echo "--- Host device nodes ---"
+    ls -l /dev/sr* /dev/sg* 2>/dev/null || true
+
+    echo
+    echo "--- Inserted optical media ---"
+    lsblk -o NAME,MAJ:MIN,SIZE,TYPE,FSTYPE,LABEL,MODEL,SERIAL \
+        2>/dev/null |
+        awk 'NR==1 || $1 ~ /^sr/'
+
+    echo
+    echo "--- ARM-visible device nodes ---"
+
+    if container_exists arm-rippers; then
+        docker exec arm-rippers sh -c \
+            'ls -l /dev/sr* /dev/sg* 2>/dev/null || true' \
+            2>&1 || true
+    else
+        echo "ARM container not found."
+    fi
+
+    section "GPU / TRANSCODING DEVICE"
+
+    echo "--- Host render nodes ---"
+    ls -l /dev/dri 2>/dev/null || true
+
+    echo
+    echo "--- ARM render nodes ---"
+
+    if container_exists arm-rippers; then
+        docker exec arm-rippers sh -c \
+            'ls -l /dev/dri 2>/dev/null || true' \
+            2>&1 || true
+    fi
+
+    echo
+    echo "--- Jellyfin render nodes ---"
+
+    if container_exists jellyfin; then
+        docker exec jellyfin sh -c \
+            'ls -l /dev/dri 2>/dev/null || true' \
+            2>&1 || true
+    fi
+
+    section "ARM CONFIGURATION FINGERPRINTS"
+
+    for file in \
+        /srv/arm/config/arm.yaml \
+        /srv/arm/config/abcde.conf \
+        /srv/arm/config/apprise.yaml
+    do
+        if [ -f "$file" ]; then
+            stat --printf='%y  %s bytes  %n\n' "$file"
+            sha256sum "$file"
+        else
+            echo "MISSING: $file"
+        fi
+    done
+
+    echo
+    echo "--- ARM image tools ---"
+
+    if container_exists arm-rippers; then
+        docker exec arm-rippers sh -c '
+            HandBrakeCLI --version 2>/dev/null | head -n 2
+            MakeMKVCon --version 2>/dev/null | head -n 2 ||
+                makemkvcon --version 2>/dev/null | head -n 2 ||
+                true
+            ffmpeg -version 2>/dev/null | head -n 1
+        ' 2>&1 || true
+    fi
+
+    section "ARM DATABASE / STATE FILES"
+
+    find /home/arm /srv/arm/config \
+        -xdev \
+        -maxdepth 5 \
+        -type f \
+        \( \
+            -iname '*.db' -o \
+            -iname '*.sqlite' -o \
+            -iname '*.sqlite3' -o \
+            -iname '*job*' \
+        \) \
+        -printf '%TY-%Tm-%Td %TH:%TM:%TS  %12s  %p\n' \
+        2>/dev/null |
+        sort || true
+
+    section "ARM WORKING STORAGE"
+
+    for directory in \
+        /srv/arm/raw \
+        /srv/arm/transcode \
+        /srv/arm/completed \
+        /srv/arm/logs
+    do
+        echo
+        echo "--- $directory ---"
+
+        if [ -d "$directory" ]; then
+            du -xhd2 "$directory" 2>/dev/null | sort -h
+        else
+            echo "Directory not found."
+        fi
+    done
+
+    echo
+    echo "--- Files remaining in raw/transcode ---"
+
+    find /srv/arm/raw /srv/arm/transcode \
+        -xdev \
+        -type f \
+        -printf '%TY-%Tm-%Td %TH:%TM:%TS  %12s  %p\n' \
+        2>/dev/null |
+        sort -r |
+        head -100 || true
+
+    section "RECENT ARM LOG FILES"
+
+    find /srv/arm/logs \
+        -xdev \
+        -type f \
+        -printf '%T@\t%TY-%Tm-%Td %TH:%TM:%TS\t%s\t%p\n' \
+        2>/dev/null |
+        sort -nr |
+        head -30 |
+        cut -f2- || true
+
+    section "RECENT ARM JOB SIGNALS"
+
+    mapfile -d '' -t ARM_LOGS < <(
+        find /srv/arm/logs \
+            -xdev \
+            -type f \
+            -mtime -14 \
+            -print0 2>/dev/null
+    )
+
+        if [ "${#ARM_LOGS[@]}" -gt 0 ]; then
+        grep -HnEi \
+            'ARM: (ERROR|WARNING|CRITICAL)|ARM processing complete|Ripping with MakeMKV completed|Handbrake processing complete|HandBrake has exited|No candidate detected during subtitle scan|Subtitle track .* hits|Foreign Audio Search|Track is the Main Title' \
+            "${ARM_LOGS[@]}" \
+            2>/dev/null |
+            tail -250 |
+            redact || true
+    else
+        echo "No ARM log files modified in the last 14 days."
+    fi
+
+    section "RECENT ARM CONTAINER WARNINGS / ERRORS"
+
+    if container_exists arm-rippers; then
+        docker logs --since 24h arm-rippers 2>&1 |
+            grep -Ei \
+    'warn|error|exception|traceback|failed|failure|critical|abort' |
+            tail -200 |
+            redact || true
+    else
+        echo "ARM container not found."
+    fi
+
+    section "JELLYFIN STORAGE ACCESS"
+
+    if container_exists jellyfin; then
+        docker exec jellyfin sh -c '
+            for path in \
+                /config \
+                /cache \
+                /media \
+                /media/movies \
+                /media/tv \
+                /media/music
+            do
+                if [ -e "$path" ]; then
+                    if [ -r "$path" ]; then
+                        echo "READABLE: $path"
+                    else
+                        echo "NOT READABLE: $path"
+                    fi
+                else
+                    echo "MISSING: $path"
+                fi
+            done
+
+            echo
+            df -hT \
+                /config \
+                /cache \
+                /media \
+                /media/movies \
+                /media/tv \
+                /media/music \
+                2>/dev/null
+        ' 2>&1 || true
+    else
+        echo "Jellyfin container not found."
+    fi
+
+    section "RECENT JELLYFIN WARNINGS / ERRORS"
+
+    if container_exists jellyfin; then
+        docker logs --since 24h jellyfin 2>&1 |
+            grep -Ei \
+                '\[WRN\]|\[ERR\]|warning|error|exception|failed|failure|ffmpeg|transcod|playback' |
+            tail -250 |
+            redact || true
+    else
+        echo "Jellyfin container not found."
+    fi
+
+    section "RECENT MEDIA SUBTITLE STREAMS"
+
+    if ! command -v ffprobe >/dev/null 2>&1; then
+        echo "ffprobe not installed on host."
+    else
+        mapfile -t RECENT_MEDIA < <(
+            find /srv/media/movies /srv/media/tv \
+                -xdev \
+                -type f \
+                \( \
+                    -iname '*.mkv' -o \
+                    -iname '*.mp4' -o \
+                    -iname '*.m4v' -o \
+                    -iname '*.avi' \
+                \) \
+                -printf '%T@\t%p\n' \
+                2>/dev/null |
+                sort -nr |
+                head -15 |
+                cut -f2-
+        )
+
+        if [ "${#RECENT_MEDIA[@]}" -eq 0 ]; then
+            echo "No video files found."
+        else
+            for media in "${RECENT_MEDIA[@]}"; do
+                echo
+                echo "FILE: $media"
+
+                subtitle_output="$(
+                    ffprobe \
+                        -v error \
+                        -select_streams s \
+                        -show_entries \
+                        stream=index,codec_name:stream_tags=language,title:stream_disposition=default,forced \
+                        -of compact=p=0:nk=0 \
+                        "$media" \
+                        2>&1
+                )"
+
+                if [ -n "$subtitle_output" ]; then
+                    printf '%s\n' "$subtitle_output"
+                else
+                    echo "No subtitle streams."
+                fi
+            done
+        fi
+    fi
+
+    section "SERVICE DISK CAPACITY"
+
+    run df -hT \
+        /srv \
+        /srv/arm \
+        /srv/media \
+        /home/arm \
+        /home/armhost/jellyfin/config \
+        /home/armhost/jellyfin/cache
+
+    echo
+    echo "================================================================"
+    echo " END SNAPSHOT"
+    echo "================================================================"
+
+} > "$TMP"
+
+cat "$TMP"
+
+cp "$TMP" "$LATEST"
+cp "$TMP" "$SNAPFILE"
+
+{
+    echo
+    cat "$TMP"
+} >> "$LOGFILE"
+
+chmod 600 "$LATEST" "$SNAPFILE" "$LOGFILE"
+
+# Timestamped snapshots have an independent 12-month retention period.
+find "$SNAPDIR" \
+    -maxdepth 1 \
+    -type f \
+    -name '*.txt' \
+    -mtime +365 \
+    -delete 2>/dev/null || true
+
+echo
+echo "Saved:"
+echo "  Latest:    $LATEST"
+echo "  Snapshot:  $SNAPFILE"
+echo "  History:   $LOGFILE"
+echo "  Retention: snapshots older than 365 days removed"
