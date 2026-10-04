@@ -12,7 +12,7 @@ All service access is confined to the LAN. The public examples use `192.0.2.x` a
 | Host administrator | SSH / SSHFS | Host account; password authentication enabled in collected drop-in | Account filesystem permissions and separately granted administration |
 | One Windows user | Samba Storage, TCP 445 | Samba authentication as the permitted host-account role | Read/write `/srv/storage`; guest access disabled for this share |
 | USB kiosk | ADB and local web sessions | Authorized ADB host key plus retained ARM/Pi-hole logins | Forwarded interfaces on tablet localhost 8080/8081 |
-| Mini-media | Manual file transfers, currently on hold | Operator-managed transfer access; no active automated job | Separate data copy; metadata and users remain host-local |
+| Mini-media | Manual file transfers, currently on hold | Operator-managed transfer access; no active automated job | Independent ingestion/playback services and local library; metadata and users remain host-local |
 | Back-off | SSH-authenticated pull | Source-side SSH key authorization on media-machine | Access granted by the authenticated account’s filesystem permissions |
 | Beszel agent | Outbound hub connection | Private `KEY` and `TOKEN` | Host, container and filesystem telemetry |
 | Task reporter | Uptime Kuma push endpoint | Token-bearing monitor URL in root-only config | Report the designated monitor state |
@@ -28,7 +28,7 @@ The SSH template retains the collected password-enabled host policy. Back-off us
 
 ## Machine relationships
 
-Mini-media is a full duplication of media-machine capabilities scaled to one optical drive and one storage drive with no internal backup. Its data, application metadata and users are maintained separately from media-machine. An earlier bidirectional transfer service brought additions into both libraries while respecting local deletion. Transfers have since returned to manual operation and are currently on hold; no automated bidirectional service is active. 
+Mini-media is a physical counterpart that reproduces media-machine’s service capabilities on Ubuntu Desktop, including its own ARM ingestion and Jellyfin playback. It is scaled to one optical drive and one storage drive, with no internal backup. Its build helped prove out the approach during media-machine’s evolution. Its data, application metadata and users are maintained separately from media-machine. An earlier bidirectional transfer service brought additions into both libraries while respecting local deletion. Transfers have since returned to manual operation and are currently on hold; no automated bidirectional service is active. 
 
 Back-off is an off-site backup host that initiates and manages its own pull jobs. Media-machine provides only the source data and SSH key authorization that permits the incoming session to authenticate. Deployed keys and fingerprints are excluded from public source. Host-key verification establishes server identity separately from client authentication. Back-off’s notifications to Uptime Kuma on PMVEN1 are entirely separate from media-machine’s local replication and configuration-backup reporting.
 

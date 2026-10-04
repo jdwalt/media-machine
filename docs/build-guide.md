@@ -10,13 +10,13 @@ To recreate the recorded layout, create mountpoints and substitute six ext4/NVMe
 
 ## 2. LAN networking and DNS
 
-Substitute actual LAN address/gateway and interface names in the two Netplan templates. The direct 10GbE interface is optional and has its own /30 link. `192.0.2.x` values are documentation placeholders; the collector's arbitrary substitutions do not establish a usable direct-link subnet or peer address.
+The production LAN interface uses DHCP. A reservation on the router ties the host's LAN address to its NIC MAC address; the router supplies the gateway and both DNS resolver addresses. Adapt the interface name in the LAN Netplan template and create the corresponding reservation on your router. The separate direct 10GbE interface is optional and uses a static /30 link. Its `192.0.2.x` values are documentation placeholders, not a usable direct-link subnet or peer assignment.
 
 The collected external Docker network `pihole_lan` uses macvlan on `enp5s0`, an IPv4 /24 subnet, gateway and /32 allocation range. Copy `config/pihole-network.conf.example` into a protected private `/etc/pihole-network.conf` and substitute your actual values. Run `sudo bash scripts/create-pihole-network` only when deploying a new network; it refuses documentation addresses and leaves an existing network unchanged. This helper reconstructs the collected network shape; the original creation command was not retained. Match the reserved Pi-hole address across Compose, the shim helper and the tablet proxy. Reserve a separate shim address in the LAN and preserve its host /32 route to Pi-hole.
 
 Keep access within the LAN and apply the intended local routing/firewall policy. Compose's ARM and Jellyfin port definitions publish to the host's default interfaces. Portainer and Scrutiny explicitly bind the LAN address in the examples. 
 
-Portainer was added after ARM and Jellyfin were deployed. The collected source identifies secondary Uptime Kuma as a Portainer-managed stack; Scrutiny's Compose definition was collected from `/opt/scrutiny`. Portainer could also manage other stacks, but this build has not validated QSV device configuration through Portainer. 
+Portainer was added after ARM and Jellyfin were deployed. Secondary Uptime Kuma is the only stack deployed through and fully managed by Portainer. The other Compose projects were deployed outside Portainer; Scrutiny's definition is under `/opt/scrutiny`. Portainer could also manage other stacks, but this build has not validated QSV device configuration through Portainer. 
 
 ## 3. Container definitions and private inputs
 

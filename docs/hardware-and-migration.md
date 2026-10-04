@@ -33,11 +33,17 @@ Post-build observations were approximately 35 C CPU package, 40 C NVMe, 39-43 C 
 
 ## Migration work
 
-The onboard interface changed from the Dell NIC to the ASUS NIC, recorded as `enp5s0`. Netplan, Pi-hole's externally managed macvlan network, and the host macvlan shim were updated. Changing a Compose file alone did not update the already-created external Docker network.
+The onboard interface changed from the Dell NIC to the ASUS NIC, recorded as `enp5s0`. Netplan, Pi-hole's externally managed macvlan network, and the host macvlan shim were updated. Changing a Compose file alone did not update the already-created external Docker network. The production LAN interface uses DHCP with a router reservation tied to its MAC address; the router supplies the gateway and DNS resolvers.
 
 Storage identity and mounts were checked after migration. Use stable UUIDs or filesystem labels in private deployment configuration rather than assuming `/dev/sdX` ordering. Real serials and UUIDs are deliberately absent from this repository.
 
 Acceptance records show healthy ARM, Jellyfin, and Pi-hole containers, both optical drives present, expected storage mounted, successful DNS responses, and a 2.5GbE production link. The recorded Linux kernel is 6.8.0-139-generic.
+
+## Parallel build: mini-media
+
+Mini-media uses an HP Z240 motherboard in a Z230 chassis and runs Ubuntu Desktop. It is a physical counterpart to media-machine, reproducing its service capabilities, including ARM ingestion and Jellyfin playback, with one optical drive and one storage drive and no internal backup. Building this smaller system helped prove out the approach as the project evolved toward the production media-machine.
+
+Each host keeps its own application metadata and users. Data transfers are manual and currently on hold. Mini-media’s detailed build remains a separate documentation project.
 
 ## Retired designs
 

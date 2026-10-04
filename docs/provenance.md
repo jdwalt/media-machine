@@ -29,3 +29,5 @@ The QSV base Dockerfile and HandBrake 1.9.2 installer were recovered from the Se
 The live secondary Kuma Compose file was read from Portainer’s data volume. Its container-internal path `/data/compose/1/docker-compose.yml` maps to the host volume’s `compose/1/docker-compose.yml`. Its LAN address is replaced with the common documentation host address.
 
 The macvlan creation helper is new repository code based on the collected driver, parent and IPAM field structure. It is not an exported historical host script. Private addresses are supplied locally.
+
+The LAN Netplan template reflects the owner-confirmed DHCP configuration with a router reservation tied to the NIC MAC address. Real reservations, MAC addresses and resolver addresses remain private.

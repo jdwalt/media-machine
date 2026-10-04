@@ -1,6 +1,6 @@
 # Media-machine homelab server
 
-Media-machine is a headless Ubuntu server built from reused hardware. It ingests owned optical media, serves a household Jellyfin library, filters DNS through Pi-hole, and stores family files. Independent local disks receive daily replication. It supplies data to the separate back-off backup project and has a separate mini-media copy maintained through manual transfers, currently on hold. All service access is confined to the LAN.
+Media-machine is a headless Ubuntu server built from reused hardware. It ingests owned optical media, serves a household Jellyfin library, filters DNS through Pi-hole, and stores family files. Independent local disks receive daily replication. It supplies data to the separate back-off backup project and has a smaller working counterpart, mini-media, running ARM, Jellyfin and the other services on Ubuntu Desktop. Mini-media reproduces the service capabilities with one optical drive and one storage drive, without internal backup. Building it helped prove out the approach as media-machine evolved; manual data transfers between them are currently on hold. All service access is confined to the LAN.
 
 **As-built documentation:** October 3, 2026. This account brings together several months of building, testing, and learning, rather than documenting each step as it happened. Some architectural choices grew out of those experiments and the hardware available. It describes the working system and its deployment source; it is a reference for adapting a similar build, not a universal installation guide. Public templates preserve the deployed layout while separating private credentials and hardware identities. See the [source inventory](docs/artifact-inventory.md) for the records and collection dates.
 
@@ -35,7 +35,7 @@ Media-machine is a headless Ubuntu server built from reused hardware. It ingests
 | Data disks | Four 4TB Seagate enterprise HDDs, two per mergerfs pool |
 | Storage controller | LSI SAS2008 HBA, firmware 20.00.07.00, mpt3sas driver |
 | Optical drives | Optiarc AD-7280S and ASUS DRW-24B1ST |
-| Production network | Onboard 2.5GbE |
+| Production network | Onboard 2.5GbE; DHCP with a router reservation tied to the NIC MAC address |
 | Operating system | Ubuntu Server 24.04.4 LTS; recorded kernel 6.8.0-139-generic |
 
 Versions identify the recorded build, not current upstream recommendations. See [hardware and migration](docs/hardware-and-migration.md).
@@ -54,11 +54,11 @@ flowchart TD
     F --> P
     P --> L["Local backup pool"]
     Z["back-off: external backup consumer"] -->|"SSH-authenticated pull"| P
-    M["mini-media: separate data copy"] <-.->|"Manual transfers, on hold"| P
+    M["mini-media: Ubuntu Desktop, ARM and Jellyfin"] <-.->|"Manual transfers, on hold"| P
     R["Pi running Kodi"] -->|"Jellyfin plugin and Quick Connect"| J
 ```
 
-The back-off arrow shows who initiates the source connection. Its backup implementation belongs to a separate project. Mini-media transfers are manual and currently on hold; no automated bidirectional synchronization is active. Application metadata and user accounts remain separate. The Pi runs Kodi with the Jellyfin plugin and uses Quick Connect authorized through one of the existing Jellyfin accounts.
+The back-off arrow shows who initiates the source connection. Its backup implementation belongs to a separate project. Mini-media runs its own ingestion and playback services. Transfers between the two hosts are manual and currently on hold; no automated bidirectional synchronization is active. Application metadata and user accounts remain separate. The Pi runs Kodi with the Jellyfin plugin and uses Quick Connect authorized through one of the existing Jellyfin accounts.
 
 | Function | Runtime and interface | Startup or schedule |
 |---|---|---|
@@ -98,7 +98,7 @@ The repository includes [service scripts](scripts/README.md), [systemd units](sy
 |---|---|
 | Four Jellyfin users | Individual media playback accounts |
 | One Windows user | Authenticated read/write access to the Storage share |
-| mini-media | HP Z240 motherboard in a Z230 chassis; manual data transfers currently on hold; metadata and users remain separate |
+| mini-media | HP Z240 motherboard in a Z230 chassis; working service replica on Ubuntu Desktop with one optical and one storage drive; manual transfers on hold; metadata and users remain separate |
 | Pi 3 B+ playback client | Kodi with the Jellyfin plugin; Quick Connect uses an existing Jellyfin account |
 | USB tablet | ARM/Pi-hole monitoring and controls through ADB reverse forwarding |
 | back-off | Z230 project; media-machine is its data source |

@@ -143,7 +143,7 @@
     },
     {
       "path": "config/netplan/50-cloud-init.yaml",
-      "sha256": "1d21b1d953a38e71797d7b2e472873cafb130b5fe5c5a3250b9504e88002909e"
+      "sha256": "e71dc397850b60f39be69c097a9342e10e48a8d2da914ec043e4900e885fc439"
     },
     {
       "path": "config/netplan/60-direct-10gbe.yaml",

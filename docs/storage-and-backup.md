@@ -43,6 +43,6 @@ The unit requires the primary pool mount. The helper preflights its containers a
 
 Media-machine provides source data to back-off, a separate Z230 backup project. This repository documents the source paths and SSH key authorization on media-machine. Back-off manages its own storage, schedules, monitoring, restore procedures and power controls. Separate public build documentation for that project is planned.
 
-Mini-media holds a separate data copy. Transfers are manual and currently on hold; no automated bidirectional synchronization is active. Application metadata and user accounts remain host-local.
+Mini-media is a working service replica on Ubuntu Desktop, scaled to one optical drive and one storage drive with no internal backup. Its own ARM and Jellyfin services use its local media library. Transfers are manual and currently on hold; no automated bidirectional synchronization is active. Application metadata and user accounts remain host-local.
 
 The primary and local-backup pools share this host's chassis, power, and operating system. Their recorded local replication behavior is documented here; external backup operation is a separate project responsibility.
