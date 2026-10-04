@@ -43,19 +43,20 @@ Versions identify the recorded build, not current upstream recommendations. See 
 ## Architecture
 
 ```mermaid
-flowchart TD
+flowchart LR
+    W -->|"Completed transcodes"| P["Primary storage pool"]
     C["Household clients"] --> J["Jellyfin"]
+    R["Pi running Kodi"] -->|"Jellyfin plugin and Quick Connect"| J
     C --> F["SMB and SSHFS"]
     C --> D["Pi-hole DNS"]
     O["Owned optical media"] --> A["ARM and Quick Sync"]
     A --> W["Scratch disk"]
-    A --> P["Primary storage pool"]
     J --> P
     F --> P
     P --> L["Local backup pool"]
     Z["back-off: external backup consumer"] -->|"SSH-authenticated pull"| P
     M["mini-media: Ubuntu Desktop, ARM and Jellyfin"] <-.->|"Manual transfers, on hold"| P
-    R["Pi running Kodi"] -->|"Jellyfin plugin and Quick Connect"| J
+    
 ```
 
 The back-off arrow shows who initiates the source connection. Its backup implementation belongs to a separate project. Mini-media runs its own ingestion and playback services. Transfers between the two hosts are manual and currently on hold; no automated bidirectional synchronization is active. Application metadata and user accounts remain separate. The Pi runs Kodi with the Jellyfin plugin and uses Quick Connect authorized through one of the existing Jellyfin accounts.
